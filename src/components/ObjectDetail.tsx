@@ -1,7 +1,11 @@
 import { useState } from 'react';
-import { ObjectItem, Task, STATUS_CONFIG, StatusType, WORK_TYPES, MOCK_BRIGADES } from '@/data/mockData';
+import { ObjectItem, STATUS_CONFIG, StatusType, WORK_TYPES } from '@/data/mockData';
+import { api } from '@/api/client';
+import { normalizeTask } from '@/api/normalize';
 import StatusDot from './StatusDot';
 import Icon from '@/components/ui/icon';
+
+const BRIGADES_DEFAULT = ['Бригада Альфа', 'Бригада Бета'];
 
 interface ObjectDetailProps {
   obj: ObjectItem;
@@ -11,6 +15,7 @@ interface ObjectDetailProps {
 
 export default function ObjectDetail({ obj, onClose, onUpdate }: ObjectDetailProps) {
   const [showAddTask, setShowAddTask] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [newTask, setNewTask] = useState({
     title: '',
     type: WORK_TYPES[0],
@@ -24,37 +29,40 @@ export default function ObjectDetail({ obj, onClose, onUpdate }: ObjectDetailPro
   const yandexNavUrl = `https://yandex.ru/navi/?rtext=~${obj.lat},${obj.lng}&rtt=auto`;
   const yandexMapUrl = `https://yandex.ru/maps/?pt=${obj.lng},${obj.lat}&z=16&l=map`;
 
-  const handleAddTask = () => {
-    if (!newTask.title.trim()) return;
-    const task: Task = {
-      id: `t${Date.now()}`,
-      ...newTask,
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-    const worstStatus = (tasks: Task[]): StatusType => {
-      const priority = ['urgent', 'repair', 'maintenance', 'ok'];
+  const handleAddTask = async () => {
+    if (!newTask.title.trim() || saving) return;
+    setSaving(true);
+    try {
+      const created = await api.createTask(Number(obj.id), newTask);
+      const task = normalizeTask(created);
+      // Recalc status
+      const priority = ['urgent', 'repair', 'maintenance'];
+      const updatedTasks = [...obj.tasks, task];
+      let newStatus: StatusType = 'ok';
       for (const s of priority) {
-        if (tasks.some(t => t.status === s)) return s as StatusType;
+        if (updatedTasks.some(t => t.status === s)) { newStatus = s as StatusType; break; }
       }
-      return 'ok';
-    };
-    const updatedTasks = [...obj.tasks, task];
-    onUpdate({ ...obj, tasks: updatedTasks, status: worstStatus(updatedTasks) });
-    setShowAddTask(false);
-    setNewTask({ title: '', type: WORK_TYPES[0], status: 'maintenance', contact: obj.contact, deadline: '', description: '', assignee: '' });
+      onUpdate({ ...obj, tasks: updatedTasks, status: newStatus });
+      setShowAddTask(false);
+      setNewTask({ title: '', type: WORK_TYPES[0], status: 'maintenance', contact: obj.contact, deadline: '', description: '', assignee: '' });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    const updatedTasks = obj.tasks.filter(t => t.id !== taskId);
-    const worstStatus = (tasks: Task[]): StatusType => {
-      if (tasks.length === 0) return 'ok';
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await api.deleteTask(Number(taskId));
+      const updatedTasks = obj.tasks.filter(t => t.id !== taskId);
       const priority = ['urgent', 'repair', 'maintenance'];
+      let newStatus: StatusType = 'ok';
       for (const s of priority) {
-        if (tasks.some(t => t.status === s)) return s as StatusType;
+        if (updatedTasks.some(t => t.status === s)) { newStatus = s as StatusType; break; }
       }
-      return 'ok';
-    };
-    onUpdate({ ...obj, tasks: updatedTasks, status: worstStatus(updatedTasks) });
+      onUpdate({ ...obj, tasks: updatedTasks, status: newStatus });
+    } catch (e) {
+      console.error('Ошибка удаления задачи:', e);
+    }
   };
 
   return (
@@ -189,7 +197,7 @@ export default function ObjectDetail({ obj, onClose, onUpdate }: ObjectDetailPro
                   onChange={e => setNewTask(p => ({ ...p, assignee: e.target.value }))}
                 >
                   <option value="">— Назначить бригаду —</option>
-                  {MOCK_BRIGADES.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                  {BRIGADES_DEFAULT.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
                 <textarea
                   className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none resize-none"

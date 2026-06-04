@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { ObjectItem, MOCK_OBJECTS, ORGANIZATIONS, STATUS_CONFIG, StatusType } from '@/data/mockData';
+import { useState, useEffect, useCallback } from 'react';
+import { ObjectItem, STATUS_CONFIG, StatusType } from '@/data/mockData';
+import { api } from '@/api/client';
+import { normalizeObject } from '@/api/normalize';
 import Sidebar, { ViewType } from '@/components/Sidebar';
 import ObjectCard from '@/components/ObjectCard';
 import ObjectDetail from '@/components/ObjectDetail';
@@ -10,7 +12,9 @@ import EmployeesView from '@/components/EmployeesView';
 import Icon from '@/components/ui/icon';
 
 export default function Index() {
-  const [objects, setObjects] = useState<ObjectItem[]>(MOCK_OBJECTS);
+  const [objects, setObjects] = useState<ObjectItem[]>([]);
+  const [organizations, setOrganizations] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<ViewType>('objects');
   const [selectedObject, setSelectedObject] = useState<ObjectItem | null>(null);
   const [filterOrg, setFilterOrg] = useState<string>('all');
@@ -18,6 +22,20 @@ export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [urgentNotification, setUrgentNotification] = useState(true);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [rawObjects, rawOrgs] = await Promise.all([api.getObjects(), api.getOrganizations()]);
+      setObjects(rawObjects.map(normalizeObject));
+      setOrganizations(rawOrgs.map((o: { name: string }) => o.name));
+    } catch (e) {
+      console.error('Ошибка загрузки данных:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const urgentCount = objects.flatMap(o => o.tasks).filter(t => t.status === 'urgent').length;
 
@@ -41,7 +59,7 @@ export default function Index() {
     setSelectedObject(updated);
   };
 
-  const orgCounts = ORGANIZATIONS.reduce((acc, org) => {
+  const orgCounts = organizations.reduce((acc, org) => {
     acc[org] = objects.filter(o => o.organization === org).length;
     return acc;
   }, {} as Record<string, number>);
@@ -156,7 +174,7 @@ export default function Index() {
                 >
                   Все ({objects.length})
                 </button>
-                {ORGANIZATIONS.map(org => (
+                {organizations.map(org => (
                   <button
                     key={org}
                     onClick={() => setFilterOrg(org)}
@@ -168,7 +186,27 @@ export default function Index() {
               </div>
 
               {/* Grid */}
-              {filteredObjects.length === 0 ? (
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-border p-4 space-y-3 animate-pulse">
+                      <div className="flex justify-between">
+                        <div className="space-y-2 flex-1">
+                          <div className="h-4 bg-secondary rounded w-3/4" />
+                          <div className="h-3 bg-secondary rounded w-1/2" />
+                        </div>
+                        <div className="w-3 h-3 rounded-full bg-secondary" />
+                      </div>
+                      <div className="h-3 bg-secondary rounded w-full" />
+                      <div className="h-3 bg-secondary rounded w-2/3" />
+                      <div className="flex gap-1">
+                        <div className="h-5 bg-secondary rounded w-16" />
+                        <div className="h-5 bg-secondary rounded w-20" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredObjects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <Icon name="Building2" size={36} className="text-muted-foreground mb-3" />
                   <p className="font-semibold">Объекты не найдены</p>

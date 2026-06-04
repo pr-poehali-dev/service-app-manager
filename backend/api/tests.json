@@ -1,0 +1,18 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200,
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET unknown route returns 404",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 404,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

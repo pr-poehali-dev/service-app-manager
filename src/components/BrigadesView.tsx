@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Brigade, Employee, MOCK_BRIGADES, MOCK_EMPLOYEES, ObjectItem } from '@/data/mockData';
+import { useState, useEffect, useCallback } from 'react';
+import { ObjectItem } from '@/data/mockData';
+import { api } from '@/api/client';
 import Icon from '@/components/ui/icon';
 import StatusDot from './StatusDot';
 
@@ -7,24 +8,58 @@ interface BrigadesViewProps {
   objects: ObjectItem[];
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export default function BrigadesView({ objects }: BrigadesViewProps) {
-  const [brigades] = useState<Brigade[]>(MOCK_BRIGADES);
-  const [employees] = useState<Employee[]>(MOCK_EMPLOYEES);
-  const [selectedBrigade, setSelectedBrigade] = useState<string | null>(null);
+  const [brigades, setBrigades] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedBrigade, setSelectedBrigade] = useState<number | null>(null);
   const [showTimeLog, setShowTimeLog] = useState(false);
-  const [timeEntry, setTimeEntry] = useState({ brigadeId: '', date: new Date().toISOString().split('T')[0], start: '08:00', end: '17:00' });
+  const [saving, setSaving] = useState(false);
+  const [timeEntry, setTimeEntry] = useState({
+    brigade_id: '',
+    log_date: new Date().toISOString().split('T')[0],
+    start: '08:00',
+    end: '17:00',
+  });
 
-  const getEmployee = (id: string) => employees.find(e => e.id === id);
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getBrigades();
+      setBrigades(data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const getBrigadeTaskObjects = (brigade: Brigade) => {
-    return objects.filter(o => o.tasks.some(t => t.assignee === brigade.name));
-  };
+  useEffect(() => { load(); }, [load]);
 
   const formatHours = (h: number) => {
     const hours = Math.floor(h);
     const mins = Math.round((h - hours) * 60);
     return mins > 0 ? `${hours}ч ${mins}м` : `${hours}ч`;
   };
+
+  const handleSaveTime = async () => {
+    if (!timeEntry.brigade_id || saving) return;
+    setSaving(true);
+    try {
+      await api.createTimeLog({
+        brigade_id: Number(timeEntry.brigade_id),
+        log_date: timeEntry.log_date,
+        start_time: timeEntry.start,
+        end_time: timeEntry.end,
+      });
+      setShowTimeLog(false);
+      setTimeEntry(p => ({ ...p, brigade_id: '' }));
+    } catch (e: any) {
+      alert(e.message || 'Ошибка сохранения');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getBrigadeObjects = (brigadeName: string) =>
+    objects.filter(o => o.tasks.some(t => t.assignee === brigadeName));
 
   return (
     <div className="p-4 md:p-6 space-y-5 animate-fade-in">
@@ -49,24 +84,31 @@ export default function BrigadesView({ objects }: BrigadesViewProps) {
           <div className="grid grid-cols-2 gap-2">
             <select
               className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none col-span-2"
-              value={timeEntry.brigadeId}
-              onChange={e => setTimeEntry(p => ({ ...p, brigadeId: e.target.value }))}
+              value={timeEntry.brigade_id}
+              onChange={e => setTimeEntry(p => ({ ...p, brigade_id: e.target.value }))}
             >
               <option value="">— Выбрать бригаду —</option>
               {brigades.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
-            <input type="date" className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none"
-              value={timeEntry.date} onChange={e => setTimeEntry(p => ({ ...p, date: e.target.value }))} />
+            <input type="date"
+              className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none"
+              value={timeEntry.log_date}
+              onChange={e => setTimeEntry(p => ({ ...p, log_date: e.target.value }))} />
             <div className="grid grid-cols-2 gap-1">
-              <input type="time" className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none"
-                value={timeEntry.start} onChange={e => setTimeEntry(p => ({ ...p, start: e.target.value }))} />
-              <input type="time" className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none"
-                value={timeEntry.end} onChange={e => setTimeEntry(p => ({ ...p, end: e.target.value }))} />
+              <input type="time"
+                className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none"
+                value={timeEntry.start}
+                onChange={e => setTimeEntry(p => ({ ...p, start: e.target.value }))} />
+              <input type="time"
+                className="px-3 py-2 text-sm rounded-lg border border-border bg-white focus:outline-none"
+                value={timeEntry.end}
+                onChange={e => setTimeEntry(p => ({ ...p, end: e.target.value }))} />
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="flex-1 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:opacity-90 font-medium">
-              Сохранить
+            <button onClick={handleSaveTime} disabled={saving}
+              className="flex-1 py-2 bg-primary text-primary-foreground text-sm rounded-lg hover:opacity-90 font-medium disabled:opacity-50">
+              {saving ? 'Сохраняем...' : 'Сохранить'}
             </button>
             <button onClick={() => setShowTimeLog(false)} className="px-4 py-2 bg-secondary text-sm rounded-lg">
               Отмена
@@ -77,9 +119,21 @@ export default function BrigadesView({ objects }: BrigadesViewProps) {
 
       {/* Brigades */}
       <div className="space-y-4">
-        {brigades.map(brigade => {
-          const members = brigade.members.map(id => getEmployee(id)).filter(Boolean) as Employee[];
-          const brigadeObjects = getBrigadeTaskObjects(brigade);
+        {loading ? (
+          Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-border p-4 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-secondary" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 bg-secondary rounded w-32" />
+                  <div className="h-3 bg-secondary rounded w-24" />
+                </div>
+              </div>
+            </div>
+          ))
+        ) : brigades.map(brigade => {
+          const members: any[] = brigade.members || [];
+          const brigadeObjects = getBrigadeObjects(brigade.name);
           const isOpen = selectedBrigade === brigade.id;
 
           return (
@@ -94,13 +148,15 @@ export default function BrigadesView({ objects }: BrigadesViewProps) {
                   </div>
                   <div>
                     <p className="font-semibold text-sm">{brigade.name}</p>
-                    <p className="text-xs text-muted-foreground">{members.length} чел. · {brigadeObjects.length} объектов</p>
+                    <p className="text-xs text-muted-foreground">
+                      {members.length} чел. · {brigadeObjects.length} объектов
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right hidden sm:block">
                     <p className="text-xs text-muted-foreground">Неделя</p>
-                    <p className="font-mono text-sm font-semibold">{formatHours(brigade.hoursThisWeek)}</p>
+                    <p className="font-mono text-sm font-semibold">{formatHours(parseFloat(brigade.hours_week) || 0)}</p>
                   </div>
                   <Icon name={isOpen ? 'ChevronUp' : 'ChevronDown'} size={16} className="text-muted-foreground" />
                 </div>
@@ -111,31 +167,26 @@ export default function BrigadesView({ objects }: BrigadesViewProps) {
                   {/* Members */}
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Состав</p>
-                    <div className="space-y-2">
-                      {members.map(emp => (
-                        <div key={emp.id} className="flex items-center justify-between py-1.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
-                              <span className="text-xs font-semibold">{emp.name.charAt(0)}</span>
+                    {members.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Нет сотрудников в бригаде</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {members.map((emp: any) => (
+                          <div key={emp.id} className="flex items-center justify-between py-1.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
+                                <span className="text-xs font-semibold">{emp.name?.charAt(0)}</span>
+                              </div>
+                              <span className="text-sm">{emp.name}</span>
                             </div>
-                            <span className="text-sm">{emp.name}</span>
+                            <span className="text-xs text-muted-foreground capitalize">{emp.role}</span>
                           </div>
-                          <div className="flex gap-4 text-right">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Неделя</p>
-                              <p className="font-mono text-xs font-semibold">{formatHours(emp.hoursThisWeek)}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground">Месяц</p>
-                              <p className="font-mono text-xs font-semibold">{formatHours(emp.hoursThisMonth)}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Current tasks */}
+                  {/* Current objects */}
                   {brigadeObjects.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Текущие объекты</p>
