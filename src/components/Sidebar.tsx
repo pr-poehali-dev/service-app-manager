@@ -1,4 +1,5 @@
 import Icon from '@/components/ui/icon';
+import { useAuth } from '@/context/AuthContext';
 
 export type ViewType = 'objects' | 'tasks' | 'brigades' | 'stats' | 'employees';
 
@@ -10,15 +11,24 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
-const NAV_ITEMS = [
-  { id: 'objects' as ViewType, label: 'Объекты', icon: 'Building2' },
-  { id: 'tasks' as ViewType, label: 'Задачи', icon: 'ClipboardList' },
-  { id: 'brigades' as ViewType, label: 'Бригады', icon: 'Users' },
-  { id: 'stats' as ViewType, label: 'Статистика', icon: 'BarChart2' },
-  { id: 'employees' as ViewType, label: 'Сотрудники', icon: 'UserCog' },
-];
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Администратор',
+  office: 'Офис',
+  brigade: 'Бригадир',
+  tech: 'Техник',
+};
 
 export default function Sidebar({ currentView, onNavigate, urgentCount, isMobileOpen, onMobileClose }: SidebarProps) {
+  const { user, logout, isAdmin } = useAuth();
+
+  const NAV_ITEMS = [
+    { id: 'objects' as ViewType, label: 'Объекты', icon: 'Building2' },
+    { id: 'tasks' as ViewType, label: 'Задачи', icon: 'ClipboardList' },
+    { id: 'brigades' as ViewType, label: 'Бригады', icon: 'Users' },
+    { id: 'stats' as ViewType, label: 'Статистика', icon: 'BarChart2' },
+    ...(isAdmin ? [{ id: 'employees' as ViewType, label: 'Сотрудники', icon: 'UserCog' }] : []),
+  ];
+
   return (
     <>
       {/* Mobile overlay */}
@@ -68,15 +78,22 @@ export default function Sidebar({ currentView, onNavigate, urgentCount, isMobile
         {/* User */}
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
           <div className="flex items-center gap-2.5 px-3 py-2">
-            <div className="w-7 h-7 rounded-full bg-blue-500/30 flex items-center justify-center flex-shrink-0">
-              <Icon name="User" size={14} className="text-blue-300" />
+            <div className="w-7 h-7 rounded-full bg-blue-500/30 flex items-center justify-center flex-shrink-0 font-semibold text-blue-200 text-xs">
+              {user?.name?.charAt(0) ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate" style={{ color: 'hsl(0 0% 90%)' }}>Администратор</p>
-              <p className="text-xs" style={{ color: 'hsl(var(--sidebar-foreground))' }}>Главный</p>
+              <p className="text-xs font-semibold truncate" style={{ color: 'hsl(0 0% 92%)' }}>{user?.name}</p>
+              <p className="text-xs" style={{ color: 'hsl(var(--sidebar-foreground))' }}>
+                {ROLE_LABELS[user?.role ?? ''] ?? user?.role}
+                {user?.brigade_name ? ` · ${user.brigade_name}` : ''}
+              </p>
             </div>
-            <button className="p-1 rounded hover:bg-white/10 transition-colors">
-              <Icon name="LogOut" size={14} className="text-muted-foreground" />
+            <button
+              onClick={logout}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              title="Выйти"
+            >
+              <Icon name="LogOut" size={14} className="text-blue-300" />
             </button>
           </div>
         </div>

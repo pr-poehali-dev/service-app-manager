@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ObjectItem, STATUS_CONFIG, StatusType } from '@/data/mockData';
 import { api } from '@/api/client';
 import { normalizeObject } from '@/api/normalize';
+import { useAuth } from '@/context/AuthContext';
 import Sidebar, { ViewType } from '@/components/Sidebar';
 import ObjectCard from '@/components/ObjectCard';
 import ObjectDetail from '@/components/ObjectDetail';
@@ -12,6 +13,7 @@ import EmployeesView from '@/components/EmployeesView';
 import Icon from '@/components/ui/icon';
 
 export default function Index() {
+  const { user } = useAuth();
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [organizations, setOrganizations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,8 +95,10 @@ export default function Index() {
               <span className="text-xs font-semibold text-red-700">{urgentCount} срочных</span>
             </button>
           )}
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground text-xs font-bold">А</span>
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center" title={user?.name}>
+            <span className="text-primary-foreground text-xs font-bold">
+              {user?.name?.charAt(0)?.toUpperCase() ?? '?'}
+            </span>
           </div>
         </header>
 
